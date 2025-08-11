@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useReducer, useEffect } from "react";
 import { User, Question, ClanApplication, Raffle, AuthState, Ticket, TicketResponse } from "../types";
-import { database } from "../database/database";
+import { apiService } from "../services/api";
 
 interface AppState {
   auth: AuthState;
@@ -59,22 +59,17 @@ function appReducer(state: AppState, action: AppAction): AppState {
   console.log("%c[Reducer Dispatch]", "color: purple", action.type, action.payload);
   switch (action.type) {
     case "LOGIN":
-      // Guardar sesión en localStorage
-      localStorage.setItem('novalegion_session', JSON.stringify(action.payload));
       return {
         ...state,
         auth: { isAuthenticated: true, currentUser: action.payload },
       };
     case "LOGOUT":
-      // Limpiar sesión de localStorage
-      localStorage.removeItem('novalegion_session');
+      apiService.clearToken();
       return {
         ...state,
         auth: { isAuthenticated: false, currentUser: null },
       };
     case "REGISTER":
-      // Guardar sesión en localStorage
-      localStorage.setItem('novalegion_session', JSON.stringify(action.payload));
       return {
         ...state,
         auth: { isAuthenticated: true, currentUser: action.payload },
@@ -93,28 +88,21 @@ function appReducer(state: AppState, action: AppAction): AppState {
     case "LOAD_STATE":
       return action.payload;
     case "ADD_QUESTION":
-      database.createQuestion(action.payload);
       return { ...state, questions: [...state.questions, action.payload] };
     case "UPDATE_QUESTION":
-      database.updateQuestion(action.payload);
       return {
         ...state,
         questions: state.questions.map(q => q.id === action.payload.id ? action.payload : q)
       };
     case "DELETE_QUESTION":
-      database.deleteQuestion(action.payload);
       return {
         ...state,
         questions: state.questions.filter(q => q.id !== action.payload)
       };
     case "REORDER_QUESTIONS":
-      database.reorderQuestions(action.payload);
       return { ...state, questions: action.payload };
     case "SUBMIT_APPLICATION":
-      database.createApplication(action.payload);
-      database.updateUserAppliedStatus(action.payload.userId, true);
       const updatedUser = { ...state.auth.currentUser!, hasApplied: true };
-      localStorage.setItem('novalegion_session', JSON.stringify(updatedUser));
       return {
         ...state,
         applications: [...state.applications, action.payload],
@@ -122,22 +110,18 @@ function appReducer(state: AppState, action: AppAction): AppState {
         users: state.users.map(u => u.id === action.payload.userId ? updatedUser : u)
       };
     case "ADD_RAFFLE":
-      database.createRaffle(action.payload);
       return { ...state, raffles: [...state.raffles, action.payload] };
     case "UPDATE_RAFFLE":
-      database.updateRaffle(action.payload);
       return {
         ...state,
         raffles: state.raffles.map(r => r.id === action.payload.id ? action.payload : r)
       };
     case "DELETE_RAFFLE":
-      database.deleteRaffle(action.payload);
       return {
         ...state,
         raffles: state.raffles.filter(r => r.id !== action.payload)
       };
     case "JOIN_RAFFLE":
-      database.joinRaffle(action.payload.raffleId, action.payload.userId);
       return {
         ...state,
         raffles: state.raffles.map(r => 
@@ -147,7 +131,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
         )
       };
     case "SET_RAFFLE_WINNER":
-      database.setRaffleWinner(action.payload.raffleId, action.payload.winnerId);
       return {
         ...state,
         raffles: state.raffles.map(r => 
@@ -157,7 +140,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
         )
       };
     case "DELETE_USER":
-      database.deleteUser(action.payload);
       return {
         ...state,
         users: state.users.filter(u => u.id !== action.payload),
@@ -168,22 +150,18 @@ function appReducer(state: AppState, action: AppAction): AppState {
         }))
       };
     case "BAN_USER":
-      database.banUser(action.payload);
       return {
         ...state,
         users: state.users.map(u => u.id === action.payload ? { ...u, banned: true } : u)
       };
     case "UNBAN_USER":
-      database.unbanUser(action.payload);
       return {
         ...state,
         users: state.users.map(u => u.id === action.payload ? { ...u, banned: false } : u)
       };
     case "UPDATE_USER":
-      database.updateUser(action.payload);
-      // Si es el usuario actual, actualizar la sesión
+      // Si es el usuario actual, actualizar el estado de autenticación
       if (state.auth.currentUser?.id === action.payload.id) {
-        localStorage.setItem('novalegion_session', JSON.stringify(action.payload));
         return {
           ...state,
           auth: { ...state.auth, currentUser: action.payload },
@@ -195,7 +173,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
         users: state.users.map(u => u.id === action.payload.id ? action.payload : u)
       };
     case "UPDATE_APPLICATION_STATUS":
-      database.updateApplicationStatus(action.payload.appId, action.payload.status);
       return {
         ...state,
         applications: state.applications.map(app => 
@@ -205,16 +182,13 @@ function appReducer(state: AppState, action: AppAction): AppState {
         )
       };
     case "CREATE_TICKET":
-      database.createTicket(action.payload);
       return { ...state, tickets: [...state.tickets, action.payload] };
     case "UPDATE_TICKET":
-      database.updateTicket(action.payload);
       return {
         ...state,
         tickets: state.tickets.map(t => t.id === action.payload.id ? action.payload : t)
       };
     case "ADD_TICKET_RESPONSE":
-      database.addTicketResponse(action.payload);
       return {
         ...state,
         tickets: state.tickets.map(t => 
@@ -224,7 +198,6 @@ function appReducer(state: AppState, action: AppAction): AppState {
         )
       };
     case "CLOSE_TICKET":
-      database.closeTicket(action.payload);
       return {
         ...state,
         tickets: state.tickets.map(t => 
@@ -242,40 +215,50 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const [state, dispatch] = useReducer(appReducer, initialState);
 
   useEffect(() => {
-    const initializeDatabase = async () => {
+    const initializeApp = async () => {
       try {
-        console.log("[INIT] Inicializando base de datos...");
-        await database.initialize();
+        console.log("[INIT] Inicializando aplicación...");
 
-        // Cargar datos de la base de datos
-        const users = await database.getAllUsers();
-        const questions = await database.getAllQuestions();
-        const applications = await database.getAllApplications();
-        const raffles = await database.getAllRaffles();
-        const tickets = await database.getAllTickets();
+        // Cargar preguntas (públicas)
+        const questions = await apiService.getAllQuestions();
 
         // Intentar restaurar sesión desde localStorage
         let currentUser = null;
         let isAuthenticated = false;
+        let users: User[] = [];
+        let applications: ClanApplication[] = [];
+        let raffles: Raffle[] = [];
+        let tickets: Ticket[] = [];
         
-        const savedSession = localStorage.getItem('novalegion_session');
-        if (savedSession) {
+        const savedToken = localStorage.getItem('novalegion_token');
+        if (savedToken) {
           try {
-            const sessionUser = JSON.parse(savedSession);
-            // Verificar que el usuario aún existe en la base de datos
-            const dbUser = await database.getUserById(sessionUser.id);
-            if (dbUser && !dbUser.banned) {
-              currentUser = dbUser;
+            apiService.setToken(savedToken);
+            const userProfile = await apiService.getUserProfile();
+            if (userProfile && !userProfile.banned) {
+              currentUser = userProfile;
               isAuthenticated = true;
-              console.log("[INIT] Sesión restaurada para:", dbUser.username);
+              console.log("[INIT] Sesión restaurada para:", userProfile.username);
+              
+              // Cargar datos adicionales si está autenticado
+              try {
+                if (currentUser.isAdmin) {
+                  users = await apiService.getAllUsers();
+                  applications = await apiService.getAllApplications();
+                  tickets = await apiService.getAllTickets();
+                }
+                raffles = await apiService.getAllRaffles();
+              } catch (error) {
+                console.warn("[INIT] Error cargando datos adicionales:", error);
+              }
             } else {
-              // Usuario no existe o está baneado, limpiar sesión
-              localStorage.removeItem('novalegion_session');
+              // Usuario baneado o no válido, limpiar sesión
+              apiService.clearToken();
               console.log("[INIT] Sesión inválida, limpiando...");
             }
           } catch (error) {
             console.error("[INIT] Error parsing session:", error);
-            localStorage.removeItem('novalegion_session');
+            apiService.clearToken();
           }
         }
 
@@ -291,11 +274,11 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         console.log("[INIT] Estado inicial cargado:", loadedState);
         dispatch({ type: "LOAD_STATE", payload: loadedState });
       } catch (error) {
-        console.error("[INIT ERROR] Error cargando datos:", error);
+        console.error("[INIT ERROR] Error inicializando aplicación:", error);
       }
     };
 
-    initializeDatabase();
+    initializeApp();
   }, []);
 
   return (

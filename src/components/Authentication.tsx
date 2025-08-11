@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Eye, EyeOff, Shield, User, Mail, Lock, LogIn, UserPlus, XCircle, MessageSquare } from 'lucide-react'; // Added XCircle for error messages
 import { useApp } from '../contexts/AppContext';
 import { User as UserType } from '../types';
-import { database } from '../database/database';
+import { apiService } from '../services/api';
 
 import { useNavigate } from 'react-router-dom';
 
@@ -87,78 +87,46 @@ export function Authentication() {
       return;
     }
 
-    // Function to get user IP (placeholder, in a real app would be server-side or more robust)
-    const getUserIP = async (): Promise<string> => {
-      try {
-        const response = await fetch('https://api.ipify.org?format=json');
-        const data = await response.json();
-        return data.ip;
-      } catch (error) {
-        console.error('Error obteniendo IP:', error);
-        return 'Unknown'; // Fallback in case of error
-      }
-    };
-
     try {
       if (isLogin) {
         // Login logic
-        const user = state.users.find(u => u.email === formData.email);
-
-        if (user && user.password === formData.password) { // In a real app, hash and compare passwords securely
-          if (user.banned) {
-            setLocalError('Tu cuenta ha sido suspendida. Contacta a un administrador.');
-            return;
-          }
-          dispatch({ type: 'LOGIN', payload: user });
+        const response = await apiService.login({
+          email: formData.email,
+          password: formData.password
+        });
+        
+        if (response.token && response.user) {
+          apiService.setToken(response.token);
+          dispatch({ type: 'LOGIN', payload: response.user });
           navigate('/');
         } else {
-          setLocalError('Email o contraseña incorrectos.');
+          setLocalError('Error en el login.');
         }
       } else {
         // Register logic
-        // Check for existing user by email or username
-        const existingEmail = state.users.find(u => u.email === formData.email);
-        const existingUsername = state.users.find(u => u.username === formData.username);
-        
-        if (existingEmail) {
-          setErrors({ email: 'Ya existe un usuario con este email.' });
-          setLocalError('Error de registro: email ya en uso.');
-          return;
-        }
-        
-        if (existingUsername) {
-          setErrors({ username: 'Ya existe un usuario con este nombre.' });
-          setLocalError('Error de registro: nombre de usuario ya en uso.');
-          return;
-        }
-
-        // Get user IP for registration
-        const userIP = await getUserIP();
-        
-        // Determine if this is the first user (make them admin)
-        const isFirstUser = state.users.length === 0;
-        const newUser: UserType = {
-          id: Date.now().toString(),
+        const response = await apiService.register({
           email: formData.email,
-          password: formData.password, // In a real app, hash password before storing
+          password: formData.password,
           username: formData.username,
           discordUsername: formData.discordUsername,
-          robloxUsername: formData.robloxUsername,
-          isAdmin: isFirstUser,
-          registeredAt: new Date(),
-          hasApplied: false,
-          banned: false,
-          ipAddress: userIP
-        };
+          robloxUsername: formData.robloxUsername
+        });
 
-        // Create user in the database and dispatch REGISTER action
-        await database.createUser(newUser); // Assuming this is an async operation
-        dispatch({ type: 'REGISTER', payload: newUser });
-        navigate('/');
+        if (response.token && response.user) {
+          apiService.setToken(response.token);
+          dispatch({ type: 'REGISTER', payload: response.user });
+          navigate('/');
+        } else {
+          setLocalError('Error en el registro.');
+        }
       }
     } catch (error) {
-      console.error('Authentication process failed:', error);
-      setLocalError('Ocurrió un error inesperado. Por favor, inténtalo de nuevo más tarde.');
+      console.error('Authentication error:', error);
+      if (error instanceof Error) {
+        setLocalError(error.message);
+      } else {
+        setLocalError('Ocurrió un error inesperado. Por favor, inténtalo de nuevo más tarde.');
+      }
     }
   };
 
