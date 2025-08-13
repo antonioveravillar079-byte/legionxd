@@ -219,8 +219,19 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       try {
         console.log("[INIT] Inicializando aplicación...");
 
-        // Cargar preguntas (públicas)
-        const questions = await apiService.getAllQuestions();
+        // Intentar cargar preguntas (públicas)
+        let questions: Question[] = [];
+        try {
+          questions = await apiService.getAllQuestions();
+          console.log("[INIT] Preguntas cargadas desde API");
+        } catch (error) {
+          console.warn("[INIT] Backend no disponible, usando datos por defecto");
+          // Usar preguntas por defecto si el backend no está disponible
+          questions = [
+            { id: '1', text: '¿Por qué quieres unirte a Nova Dark Legion?', type: 'text', required: true, order: 1 },
+            { id: '2', text: '¿Cuál es tu experiencia en Roblox?', type: 'text', required: true, order: 2 }
+          ];
+        }
 
         // Intentar restaurar sesión desde localStorage
         let currentUser = null;
@@ -241,6 +252,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
               console.log("[INIT] Sesión restaurada para:", userProfile.username);
               
               // Cargar datos adicionales si está autenticado
+              if (questions.length > 0) { // Solo si el backend está disponible
               try {
                 if (currentUser.isAdmin) {
                   users = await apiService.getAllUsers();
@@ -250,6 +262,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
                 raffles = await apiService.getAllRaffles();
               } catch (error) {
                 console.warn("[INIT] Error cargando datos adicionales:", error);
+              }
               }
             } else {
               // Usuario baneado o no válido, limpiar sesión
