@@ -47,7 +47,7 @@ router.post('/register', async (req, res) => {
     );
 
     // Generar token JWT
-    const token = jwt.sign({ userId }, process.env.JWT_SECRET!, { expiresIn: process.env.JWT_EXPIRES_IN });
+    const token = jwt.sign({ userId }, process.env.JWT_SECRET!);
 
     // Obtener datos del usuario creado
     const [newUser] = await pool.execute(
@@ -116,7 +116,7 @@ router.post('/login', async (req, res) => {
     );
 
     // Generar token JWT
-    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET!, { expiresIn: process.env.JWT_EXPIRES_IN });
+    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET!);
 
     res.json({
       message: 'Login exitoso',
