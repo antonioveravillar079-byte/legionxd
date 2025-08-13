@@ -3,15 +3,15 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
 class ApiService {
   private token: string | null = null;
+  private baseURL: string;
 
   constructor() {
     this.baseURL = API_BASE_URL;
     this.token = localStorage.getItem('novalegion_token');
   }
 
+  private async fetchWithTimeout(url: string, options: RequestInit = {}): Promise<Response> {
     try {
-  private getHeaders(): HeadersInit {
-    const headers: HeadersInit = {
       // Verificar si el backend está disponible con un timeout
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 segundos timeout
@@ -19,6 +19,20 @@ class ApiService {
       const response = await fetch(url, {
         ...options,
         signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      return response;
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Timeout: El servidor no responde');
+      }
+      throw error;
+    }
+  }
+
+  private getHeaders(): HeadersInit {
+    const headers: HeadersInit = {
       'Content-Type': 'application/json',
     };
 
@@ -28,24 +42,18 @@ class ApiService {
 
     return headers;
   }
-      clearTimeout(timeoutId);
+
   private async handleResponse(response: Response) {
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Error desconocido' }));
-        throw new Error(errorData.message || `HTTP ${response.status}`);
-      }
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: 'Error desconocido' }));
+      throw new Error(errorData.message || `HTTP ${response.status}`);
+    }
 
     if (!response.ok) {
       const error = await response.json().catch(() => ({ error: 'Error desconocido' }));
       throw new Error(error.error || `HTTP ${response.status}`);
     }
     return response.json();
-    } catch (error) {
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new Error('Timeout: El servidor no responde');
-      }
-      throw error;
-    }
   }
 
   setToken(token: string) {
