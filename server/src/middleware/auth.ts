@@ -3,11 +3,7 @@ import jwt from 'jsonwebtoken';
 import { pool } from '../config/database';
 import { User } from '../types';
 
-interface AuthRequest extends Request {
-  user?: User;
-}
-
-export const authenticateToken = async (req: AuthRequest, res: Response, next: NextFunction) => {
+export const authenticateToken = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
 
@@ -17,13 +13,12 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: string };
-    
-    // Verificar que el usuario existe y no está baneado
+
     const [rows] = await pool.execute(
       'SELECT * FROM users WHERE id = ? AND banned = FALSE',
       [decoded.userId]
     );
-    
+
     const users = rows as any[];
     if (users.length === 0) {
       return res.status(403).json({ error: 'Usuario no encontrado o baneado' });
@@ -51,7 +46,7 @@ export const authenticateToken = async (req: AuthRequest, res: Response, next: N
   }
 };
 
-export const requireAdmin = (req: AuthRequest, res: Response, next: NextFunction) => {
+export const requireAdmin = (req: Request, res: Response, next: NextFunction) => {
   if (!req.user?.isAdmin) {
     return res.status(403).json({ error: 'Acceso denegado. Se requieren permisos de administrador.' });
   }
